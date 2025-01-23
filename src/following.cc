@@ -33,6 +33,13 @@ public:
     }
 
 private:
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr ego_subscription_;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr opp_subscription_;
+    rclcpp::Publisher<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive_publisher_;
+
+    geometry_msgs::msg::Point ego_position_;
+    geometry_msgs::msg::Point opp_position_;
+
     PID pidThrottle;
     PID pidHeading;
     
@@ -45,14 +52,21 @@ private:
     void egoCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
     {
         ego_position_ = msg->pose.pose.position;
-        calculateDifference();
     }
 
     void oppCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
     {
         opp_position_ = msg->pose.pose.position;
-        calculateDifference();
     }
+
+    // make publish odometry:
+    // runs on fixed timer
+    // create_timer -> get syntax
+    // make a callback to this function
+    // in this function:
+    // take positions and calculateDifference()
+    // calculate speed and angle
+    // publish in the timer
 
     void calculateDifference()
     {
@@ -71,22 +85,20 @@ private:
 
     void publishMessage()
     {
+        // add clamping
         ackermann_msgs::msg::AckermannDriveStamped msg;
+        double speed = pidThrottle.P(0.1) + pidThrottle.I(0.01) + pidThrottle.D(0.0);
+        double angle = pidHeading.P(0.01) + pidHeading.I(0.0) + pidHeading.D(0.0);
         msg.header.frame_id = "map";
         msg.header.stamp = this->get_clock()->now();
-        msg.drive.speed = pidThrottle.P(0.1);
-        msg.drive.steering_angle = pidHeading.P(0.1);
-        RCLCPP_INFO(this->get_logger(), "\nSpeed: %.2f\nAngle: %.2f", pidThrottle.P(0.3), pidHeading.P(0.2));
+        msg.drive.speed = speed;
+        msg.drive.steering_angle = angle;
+        RCLCPP_INFO(this->get_logger(), "\nSpeed: %.2f\nAngle: %.2f", speed, angle);
         // time stamp at at publish messages;
         
         drive_publisher_->publish(msg);
     }
-    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr ego_subscription_;
-    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr opp_subscription_;
-    rclcpp::Publisher<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive_publisher_;
 
-    geometry_msgs::msg::Point ego_position_;
-    geometry_msgs::msg::Point opp_position_;
 };
 
 int main(int argc, char **argv)
