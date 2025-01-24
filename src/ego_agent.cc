@@ -52,7 +52,7 @@ private:
         msg.drive.steering_angle = heading;
         msg.drive.speed = speed;
         drive_publisher_->publish(msg);
-        RCLCPP_INFO(this->get_logger(), "\nSpeed: %0.2f\nHeading: %0.2f\n-----\n", maxDist, heading);
+        RCLCPP_INFO(this->get_logger(), "\nOpp Speed: %0.2f\nOpp Heading: %0.2f\n-----\n", speed, heading);
     }
 
     std::vector<float> preprocess_lidar(const sensor_msgs::msg::LaserScan::ConstSharedPtr &msg)
