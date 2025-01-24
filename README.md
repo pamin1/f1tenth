@@ -22,3 +22,8 @@ Prachit:
 * Working on a following controller in simulation. We simplify the problem by assuming the position of the opponent car by subscribing to the /opp_odom topic. 
 * Using the known global position, we localize the frame of reference and use PID control to maneuver the ego agent towards the opponent.
 * Further improvements will include PID tuning and implementation of RRT* to do real time path planning.
+
+Vaishnavi:
+* Set up a VM, played around with ROS2 (familiar with writing a publisher, subcriber, service and client in C++ and Python)
+* Testing out composing ROS2 nodes that can read data from a sensor and alter the servo motor based on the readings (in progress)
+* Will test the above during Week 2 on physical car
