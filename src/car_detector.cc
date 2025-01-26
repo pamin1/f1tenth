@@ -1,6 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <vision_msgs/msg/detection2_d_array.hpp>
+#include <vision_msgs/msg/detection2_d.hpp>
 #include "ultralytics_ros/msg/yolo_result.hpp"
 
 class CarDetector : public rclcpp::Node
@@ -9,12 +10,12 @@ public:
     CarDetector() : Node("yolo_node")
     {
         // Subscribe to image topic
-        yoloSub_ = this->create_subscription<vision_msgs::msg::Detection2DArray::SharedPtr>(
+        yoloSub_ = this->create_subscription<ultralytics_ros::msg::YoloResult>(
             "/yolo_result", 10, std::bind(&CarDetector::yoloCallback, this, std::placeholders::_1));
     }
 
 private:
-    void yoloCallback(const vision_msgs::msg::Detection2DArray::ConstSharedPtr &msg)
+    void yoloCallback(const ultralytics_ros::msg::YoloResult::SharedPtr &msg)
     {
         RCLCPP_INFO(this->get_logger(), "Entered callback");
         for (const auto &detection : msg->detections)
@@ -35,7 +36,7 @@ private:
             }
         }
     }
-    rclcpp::Subscription<vision_msgs::msg::Detection2DArray::SharedPtr>::SharedPtr yoloSub_;
+    rclcpp::Subscription<ultralytics_ros::msg::YoloResult>::SharedPtr yoloSub_;
     float bbox_center_x;
     float bbox_center_y;
 };
