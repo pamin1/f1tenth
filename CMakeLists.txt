@@ -5,6 +5,8 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # find dependencies
 foreach(PACKAGE 
   ament_cmake 
@@ -34,12 +36,11 @@ include_directories(/usr/include/opencv4/opencv2)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 add_executable(ego_agent src/ego_agent.cc)
-add_executable(following src/following.cc)
+add_executable(following src/car_following.cc)
 add_executable(detector src/car_detector.cc)
-target_link_libraries(detector ${TORCH_LIBRARIES})
 
 ament_target_dependencies(ego_agent rclcpp std_msgs sensor_msgs nav_msgs ackermann_msgs)
-ament_target_dependencies(following rclcpp std_msgs sensor_msgs nav_msgs ackermann_msgs)
+ament_target_dependencies(following rclcpp std_msgs sensor_msgs ultralytics_ros ackermann_msgs)
 ament_target_dependencies(detector rclcpp std_msgs sensor_msgs geometry_msgs vision_msgs ultralytics_ros)
 
 install(TARGETS
