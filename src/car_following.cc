@@ -10,7 +10,6 @@
 #include <algorithm>
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
-#include "ultralytics_ros/msg/yolo_result.hpp"
 #include "ackermann_msgs/msg/ackermann_drive_stamped.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
 
@@ -27,7 +26,7 @@ public:
   CarFollowing()
       : Node("odom_difference_node")
   {
-    drive_publisher_ = this->create_publisher<ackermann_msgs::msg::AckermannDriveStamped>("/drive", 10);
+    drive_publisher_ = this->create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(drive_topic, 10);
 
     lidar_subscriber_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
         lidarscan_topic, 10,
@@ -39,8 +38,6 @@ public:
 private:
   // inputs:  yolo topic, image depth data, lidar
   // outputs: ackermann message with throttle and steering control
-  void yoloCallback(const ultralytics_ros::msg::YoloResult::SharedPtr msg);
-  void depthCallback(const sensor_msgs::msg::Image::SharedPtr msg);
   void lidarCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg);
   void publishMessage();
 
@@ -56,12 +53,10 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
 
   rclcpp::Publisher<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive_publisher_;
-  rclcpp::Subscription<ultralytics_ros::msg::YoloResult>::SharedPtr yoloSub_;
-  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr depthSub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr lidar_subscriber_;
 
-  std::string lidarscan_topic = "/opp_scan";
-  std::string drive_topic = "/opp_drive";
+  std::string lidarscan_topic = "/scan";
+  std::string drive_topic = "/drive";
 
   float min;
   float inc;
@@ -69,60 +64,26 @@ private:
   float rayClose;
   float maxDist;
   float heading;
-  int bboxCenterX;
-  int bboxCenterY;
-  double depth;
-  bool foundDetections = false;
+  std::vector<float> front;
+  int L_FOV = 201;
+  int R_FOV = 881;
 };
-
-void CarFollowing::yoloCallback(const ultralytics_ros::msg::YoloResult::SharedPtr msg)
-{
-  // RCLCPP_INFO(this->get_logger(), "Entered callback");
-  for (size_t i = 0; i < msg->detections.detections.size(); i++)
-  {
-    foundDetections = true;
-    const auto &detection = msg->detections.detections[i];
-    for (size_t j = 0; j < detection.results.size(); j++)
-    {
-      const auto &result = detection.results[j];
-      std::string class_id = result.hypothesis.class_id;
-      float score = result.hypothesis.score;
-
-      bboxCenterX = detection.bbox.center.position.x;
-      bboxCenterY = detection.bbox.center.position.y;
-
-      RCLCPP_INFO(this->get_logger(),
-                  "Detected object: %s with confidence %.2f",
-                  class_id.c_str(), score);
-      RCLCPP_INFO(this->get_logger(),
-                  "Bounding box center: (x=%d, y=%d)",
-                  bboxCenterX, bboxCenterY);
-    }
-  }
-}
-
-void CarFollowing::depthCallback(const sensor_msgs::msg::Image::SharedPtr msg)
-{
-  float *depths = reinterpret_cast<float *>(&msg->data[0]);
-  int bboxCenter = bboxCenterX + msg->width * bboxCenterY;
-  depth = depths[bboxCenter];
-}
 
 void CarFollowing::publishMessage()
 {
   ackermann_msgs::msg::AckermannDriveStamped msg;
 
-  double speed = 0;
-
   // simple control loop to restrain throttle if another car was detected
-  if (foundDetections)
+  double speed = std::min(1.0, maxDist / 2.0);
+
+  for (auto i : front)
   {
-    speed = 0.1;
+    float closest = std::min(i, static_cast<float>(3.0));
+    if (closest < 3.0) {
+      speed = 0.1;
+    }
   }
-  else
-  {
-    speed = std::min(1.0, maxDist / 2.0);
-  }
+
 
   msg.header.frame_id = "map";
   msg.header.stamp = this->get_clock()->now();
@@ -137,20 +98,23 @@ std::vector<float> CarFollowing::preprocess_lidar(const sensor_msgs::msg::LaserS
   // Preprocess the LiDAR scan array. Expert implementation includes:
   // 1.Setting each value to the mean over some window (if not in sim)
   // 2.Rejecting high values (eg. > 3m)
-  int count = 0;
   std::vector<float> res(msg->ranges.size());
-  for (auto &i : msg->ranges)
+  for (int i = 0; i < res.size(); i++)
   {
     // auto &val = msg->ranges[i];
-    if (i > 6.0)
+    if (i > 3.0)
     {
-      res[count] = 6.0;
+      res[i] = 3.0;
     }
     else
     {
-      res[count] = i;
+      res[i] = msg->ranges[i];
     }
-    count++;
+
+    if (i > L_FOV && i < R_FOV)
+    {
+      front.push_back(res[i]);
+    }
   }
 
   return res;
@@ -267,8 +231,6 @@ void CarFollowing::lidarCallback(const sensor_msgs::msg::LaserScan::SharedPtr ms
 
   // Publish Drive message
   heading = min + (bestPoint * inc);
-
-  publishMessage();
 }
 
 int main(int argc, char **argv)
