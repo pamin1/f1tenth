@@ -23,6 +23,7 @@ Prachit:
 * Using the known global position, we localize the frame of reference and use PID control to maneuver the ego agent towards the opponent.
 * Removed global position abstractions by narrowing the line of data we use from the lidar. Currently at a naive lidar detection implementation which averages the
   the middle ~50 laser scans. Using Follow The Gap for the underlying controller.
+* **Implementation in src/following.cc**
 
 Vaishnavi:
 * Set up a VM, played around with ROS2 (familiar with writing a publisher, subcriber, service and client in C++ and Python)
