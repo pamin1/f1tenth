@@ -9,7 +9,6 @@
 #include <iostream>
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
-#include "nav_msgs/msg/odometry.hpp"
 #include "ackermann_msgs/msg/ackermann_drive_stamped.hpp"
 
 class ReactiveFollowGap : public rclcpp::Node
@@ -29,6 +28,7 @@ private:
     float inc;
     float angle;
     float rayClose;
+    bool validDetection;
     std::vector<float> differences;
 
     std::string lidarscan_topic = "/scan";
@@ -40,11 +40,15 @@ private:
     void publishMessage(float maxDist, float &heading)
     {
         ackermann_msgs::msg::AckermannDriveStamped msg;
-        msg.drive.steering_angle = 0;
-        msg.drive.speed = 0;
+        // msg.header.stamp = this->get_clock()->now();
+
+        float speed = 1;
+       
+        msg.drive.steering_angle = heading;
+        msg.drive.speed = speed;
 
         drive_publisher_->publish(msg);
-        // RCLCPP_INFO(this->get_logger(), "\nSpeed: %0.2f\nHeading: %0.2f\n-----\n", maxDist, heading);
+        RCLCPP_INFO(this->get_logger(), "\nSpeed: %0.2f\nHeading: %0.2f\n-----\n", maxDist, heading);
     }
 
     std::vector<float> preprocess_lidar(const sensor_msgs::msg::LaserScan::ConstSharedPtr &msg)
@@ -124,9 +128,9 @@ private:
         std::vector<float> range = preprocess_lidar(msg);
         std::vector<float> orig = msg->ranges; // copy vector for detection purposes
 
-    // modifying orig to get a narrowed vision of obstacles in front of the car
+        // modifying orig to get a narrowed vision of obstacles in front of the car
         int mid = std::floor(orig.size() / 2);
-        size_t width = 25; // Total of 2*width + 1 elements (center + both sides)
+        size_t width = 35; // Total of 2*width + 1 elements (center + both sides)
 
         // Ensure bounds are valid
         size_t start = (mid >= width) ? mid - width : 0;
@@ -137,15 +141,16 @@ private:
 
         double sum = std::accumulate(new_vec.begin(), new_vec.end(), 0.0);
         double average = sum / new_vec.size(); // naive approach to check if there is an obstacle
-        if (average < 0.4)
+        if (average < 1.5)
         {
-            RCLCPP_INFO(this->get_logger(), "CAR DETECTED!");
+            // RCLCPP_INFO(this->get_logger(), "CAR DETECTED!");
+            validDetection = true;
         }
 
         auto closest = std::min_element(range.begin(), range.end());
         auto closest_point_idx = std::find(range.begin(), range.end(), *closest);
-    
-    // back to FTG
+
+        // back to FTG
         // Eliminate all points inside 'bubble' (set them to zero)
         int max = msg->angle_max;
         min = msg->angle_min;
