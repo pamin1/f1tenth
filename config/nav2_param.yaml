@@ -1,0 +1,31 @@
+controller_server:
+  ros__parameters:
+    use_sim_time: False
+    controller_plugins: ["FollowPath"]
+    FollowPath:
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      lookahead_dist: 0.4  # Tune for F1Tenth
+      min_lookahead_dist: 0.2
+      max_lookahead_dist: 0.6
+      desired_linear_vel: 2.0  # Match car speed
+      max_linear_vel: 3.0
+      max_angular_vel: 2.0
+      transform_tolerance: 0.1
+      use_velocity_scaled_lookahead_dist: True
+      lookahead_time: 1.5
+
+planner_server:
+  ros__parameters:
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_navfn_planner/NavfnPlanner"
+      tolerance: 0.5
+      use_final_approach_orientation: False
+
+# Disable costmaps
+local_costmap:
+  ros__parameters:
+    enabled: False  # No costmap needed
+global_costmap:
+  ros__parameters:
+    enabled: False  # No costmap needed

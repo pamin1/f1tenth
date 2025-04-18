@@ -1,34 +1,28 @@
 <?xml version="1.0"?>
-<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>mpcc</name>
-  <version>0.0.0</version>
+  <name>f1tenth</name>
+  <version>0.1.0</version>
   <description>MPCC controller for RC cars</description>
   <maintainer email="prachitamin12@gmail.com">prachit</maintainer>
   <license>Apache-2.0</license>
 
-  <buildtool_depend>ament_cmake</buildtool_depend>
+  <!-- Use ament_python as the build tool for a pure Python package -->
+  <buildtool_depend>ament_python</buildtool_depend>
 
+  <!-- Only include exec dependencies needed for your Python node -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>ackermann_msgs</exec_depend>
   <exec_depend>ros2launch</exec_depend>
 
-  <depend>rclcpp</depend>
-  <depend>rclpy</depend>
-  <depend>std_msgs</depend>
-  <depend>sensor_msgs</depend>
-  <depend>ackermann_msgs</depend>
-  <depend>geometry_msgs</depend>
-  <depend>visualization_msgs</depend>
-  <depend>vision_msgs</depend>
-  <depend>ultralytics_ros</depend>
-  <depend>Eigen3</depend>
-  <depend>opencv4</depend>
-  <depend>Torch</depend>
-  <depend>tf2_ros</depend>
-  
+  <!-- Remove dependencies which are specific to C++ if not used -->
+  <!-- If you need additional dependencies for your Python node, add them here -->
+
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 
   <export>
-    <build_type>ament_cmake</build_type>
+    <!-- Declare the package build type explicitly -->
+    <build_type>ament_python</build_type>
   </export>
 </package>

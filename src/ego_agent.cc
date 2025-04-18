@@ -17,21 +17,23 @@ class ReactiveFollowGap : public rclcpp::Node
 public:
     ReactiveFollowGap() : Node("reactive_node")
     {
+
         lidar_subscriber_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
             lidarscan_topic, 10,
             std::bind(&ReactiveFollowGap::lidar_callback, this, std::placeholders::_1));
 
-        drive_publisher_ = this->create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(drive_topic, 10);
+        drive_publisher_ = this->create_publisher<ackermann_msgs::msg::AckermannDriveStamped>("drive", 10);
     }
 
 private:
     float min;
     float inc;
     float angle;
-
     float rayClose;
-    std::string lidarscan_topic = "/opp_scan";
-    std::string drive_topic = "/opp_drive";
+    std::vector<float> differences;
+
+    std::string lidarscan_topic = "/scan";
+    std::string drive_topic = "/drive";
     /// TODO: create ROS subscribers and publishers
 
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr lidar_subscriber_;
@@ -42,17 +44,18 @@ private:
     void publishMessage(float maxDist, float &heading)
     {
         ackermann_msgs::msg::AckermannDriveStamped msg;
-        float speed = std::min(1.0, maxDist / 2.0);
-        msg.header.frame_id = "map";
-        msg.header.stamp = this->get_clock()->now();
-        if (heading < -1 || heading > 1)
-        {
-            heading = 0;
-        }
-        msg.drive.steering_angle = heading;
-        msg.drive.speed = speed;
+        // float speed = std::min(0.25, maxDist / 2.0);
+        // // msg.header.frame_id = "map";
+        // msg.header.stamp = this->get_clock()->now();
+        // if (heading < -1 || heading > 1)
+        // {
+        //     heading = 0;
+        // }
+        msg.drive.steering_angle = 0;
+        msg.drive.speed = 0;
+
         drive_publisher_->publish(msg);
-        RCLCPP_INFO(this->get_logger(), "\nOpp Speed: %0.2f\nOpp Heading: %0.2f\n-----\n", speed, heading);
+        // RCLCPP_INFO(this->get_logger(), "\nOpp Speed: %0.2f\nOpp Heading: %0.2f\n-----\n", speed, heading);
     }
 
     std::vector<float> preprocess_lidar(const sensor_msgs::msg::LaserScan::ConstSharedPtr &msg)
@@ -65,10 +68,9 @@ private:
         std::vector<float> res(msg->ranges.size());
         for (auto &i : msg->ranges)
         {
-            // auto &val = msg->ranges[i];
-            if (i > 6.0)
+            if (i > 3)
             {
-                res[count] = 6.0;
+                res[count] = 3;
             }
             else
             {
@@ -140,14 +142,26 @@ private:
         // preprocess_lidar can either take in the msg directly (recommend) or pass in ranges, min/max and increment
 
         std::vector<float> range = preprocess_lidar(msg);
-        // std::cout << "Range Values:\n";
-        // for (auto &i : range)
-        // {
-        //     std::cout << i << ", ";
-        // }
-        // std::cout << "\n";
-        /// TODO:
-        // Find closest point to LiDAR
+
+        std::vector<float> orig = msg->ranges;
+
+        int mid = std::floor(orig.size() / 2);
+        size_t width = 25; // Total of 2*width + 1 elements (center + both sides)
+
+        // Ensure bounds are valid
+        size_t start = (mid >= width) ? mid - width : 0;
+        size_t end = std::min(mid + width + 1, orig.size());
+
+        // Initialize a new vector using a range constructor
+        std::vector<float> new_vec(orig.begin() + start, orig.begin() + end);
+
+        double sum = std::accumulate(new_vec.begin(), new_vec.end(), 0.0);
+        double average = sum / new_vec.size();
+        if (average < 0.4)
+        {
+            RCLCPP_INFO(this->get_logger(), "CAR DETECTED!");
+        }
+
         auto closest = std::min_element(range.begin(), range.end());
         auto closest_point_idx = std::find(range.begin(), range.end(), *closest);
 
@@ -155,6 +169,9 @@ private:
         int max = msg->angle_max;
         min = msg->angle_min;
         inc = msg->angle_increment;
+
+        // RCLCPP_INFO(this->get_logger(), "min: %0.2f\nmax: %0.2f\ninc: %0.2f", min, max, inc);
+
         angle = min + (inc * *closest_point_idx);
 
         rayClose = *closest;
