@@ -13,17 +13,26 @@ import tf2_geometry_msgs
 from geometry_msgs.msg import TransformStamped, Quaternion
 from rclpy.duration import Duration
 
+class PathPoint():
+    def __init__(self, x, y, heading, curvature, distance):
+        # global pose
+        self.x = x
+        self.y = y
+        self.heading = heading
+        self.curvature = curvature
+        self.distance = distance
+
 class PurePursuitController(Node):
     def __init__(self):
         # Initialize ROS 2 node
         super().__init__('pure_pursuit_controller')
         
-        # Load waypoints from JSON file
+        # Load waypoints from CSV file
         # this looks like pure odom data, but we likely want to bring this in from a trajectory planner
         # so the planner should give up a csv/json of the appropriate format to place into this
         self.waypoints = self.load_waypoints('/home/nvidia/team2TEMP/src/f1tenth/VipPathOptimization/maps/points/points.csv') 
         self.current_waypoint_index = 0
-        
+        self.path = PathPoint()
         # Pure pursuit parameters - defined directly in the code
         self.lookahead_distance = 1.0  # meters
         self.max_speed = 0.5  # m/s
@@ -35,7 +44,7 @@ class PurePursuitController(Node):
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         
-        # Subscribers
+        # get local position
         self.pose_sub = self.create_subscription(
             PoseWithCovarianceStamped, 
             '/amcl_pose', 
@@ -63,22 +72,109 @@ class PurePursuitController(Node):
     #         self.get_logger().error(f"Failed to load waypoints: {e}")
     #         return []
     
+    def compute_curvature(self, x, y, ds=None):
+        """
+        Compute curvature kappa[i] = (x' y'' - y' x'') / (x'^2 + y'^2)^(3/2)
+
+        Parameters
+        ----------
+        x : array-like, shape (N,)
+            x-coordinates of the path.
+        y : array-like, shape (N,)
+            y-coordinates of the path.
+        ds : float, optional
+            Spacing between points. If None, it will be estimated as the mean
+            Euclidean distance between consecutive points.
+
+        Returns
+        -------
+        kappa : ndarray, shape (N,)
+            Curvature at each point.
+        """
+        x = np.asarray(x, dtype=float)
+        y = np.asarray(y, dtype=float)
+        N = len(x)
+        if N < 3:
+            raise ValueError("Need at least 3 points to compute curvature.")
+
+        # estimate ds if not provided
+        if ds is None:
+            dx_seg = np.diff(x)
+            dy_seg = np.diff(y)
+            ds = np.mean(np.hypot(dx_seg, dy_seg))
+
+        # allocate derivative arrays
+        x1 = np.empty(N)
+        y1 = np.empty(N)
+        x2 = np.empty(N)
+        y2 = np.empty(N)
+
+        # first derivative: forward/backward at ends, central inside
+        x1[0]   = (x[1]   - x[0])   / ds
+        y1[0]   = (y[1]   - y[0])   / ds
+        x1[-1]  = (x[-1]  - x[-2])  / ds
+        y1[-1]  = (y[-1]  - y[-2])  / ds
+        x1[1:-1] = (x[2:] - x[:-2]) / (2*ds)
+        y1[1:-1] = (y[2:] - y[:-2]) / (2*ds)
+
+        # second derivative: zero at ends (or you could forward/backwards)
+        x2[0]    = 0.0
+        y2[0]    = 0.0
+        x2[-1]   = 0.0
+        y2[-1]   = 0.0
+        x2[1:-1] = (x[2:] - 2*x[1:-1] + x[:-2]) / (ds*ds)
+        y2[1:-1] = (y[2:] - 2*y[1:-1] + y[:-2]) / (ds*ds)
+
+        # curvature formula
+        numerator   = x1 * y2 - y1 * x2
+        denominator = (x1**2 + y1**2)**1.5
+        kappa = numerator / denominator
+
+        return kappa
+    
     def load_waypoints(self, filename):
         """
         Load waypoints from a CSV with columns 'x','y' (header row required).
         Returns a list of (x, y) tuples.
         """
         waypoints = []
+        
         try:
-            with open(filename, 'r') as csvfile:
-                reader = csv.DictReader(csvfile)
-                for row in reader:
-                    # cast to float and append as a tuple
-                    waypoints.append((float(row['A']), float(row['B'])))
-            self.get_logger().info(f"Loaded {len(waypoints)} waypoints from {filename}")
+            with open('your_file.csv', newline='') as csvfile:
+                row = list(csv.reader(csvfile))
+                arrX = []
+                arrY = []
+                for i in range(len(row) - 1):
+                    arrX.append([row[i][0]])
+                    arrY.append([row[i][1]])
+                    
+                    x1 = row[i][0]
+                    x2 = row[i + 1][0]
+                    y1 = row[i][1]
+                    y2 = row[i + 1][1]
+                    
+                    heading = math.atan2(y2-y1, x2-x1)
+                    curvature = self.compute_curvature(arrX, arrY)
+                    distance = np.hypot(y2-y1, x2-x1)
+                    
+                    waypoints.append(PathPoint(x1,y1,heading, curvature, distance))
         except Exception as e:
             self.get_logger().error(f"Failed to load waypoints: {e}")
+        
         return waypoints
+        
+        # try:
+        #     with open(filename, 'r') as csvfile:
+        #         reader = csv.DictReader(csvfile)
+        #         for row in reader:
+        #             # cast to float and append as a tuple
+        #             # instead append a PathPoint object
+        #             # calculate heading
+        #             waypoints.append((float(row['A']), float(row['B'])))
+        #     self.get_logger().info(f"Loaded {len(waypoints)} waypoints from {filename}")
+        # except Exception as e:
+        #     self.get_logger().error(f"Failed to load waypoints: {e}")
+        # return waypoints
 
     def pose_callback(self, msg):
         """Callback for AMCL pose updates."""
@@ -93,6 +189,10 @@ class PurePursuitController(Node):
         # Get current position and orientation
         current_pos = self.current_pose.pose.pose.position
         current_orient = self.current_pose.pose.pose.orientation
+        
+        ## determine the path point closest to the vehicle
+        for point in self.waypoints:
+            
         
         # Convert quaternion to euler angles (yaw)
         # For a quaternion q = [x, y, z, w], yaw = atan2(2*(w*z + x*y), 1 - 2*(y*y + z*z))
