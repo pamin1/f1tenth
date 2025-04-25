@@ -2,7 +2,7 @@
 <package format="3">
   <name>f1tenth</name>
   <version>0.1.0</version>
-  <description>MPCC controller for RC cars</description>
+  <description>F1tenth controllers for RC cars</description>
   <maintainer email="prachitamin12@gmail.com">prachit</maintainer>
   <license>Apache-2.0</license>
 

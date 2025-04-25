@@ -17,7 +17,8 @@ setup(
     license='Apache-2.0',
     entry_points={
         'console_scripts': [
-            'test = f1tenth.test:main'
+            'pure_pursuit = f1tenth.pure_pursuit:main',
+            'vis = f1tenth.path_publisher:main'
         ],
     },
     data_files=[

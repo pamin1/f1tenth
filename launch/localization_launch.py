@@ -133,7 +133,7 @@ def generate_launch_description():
 
     ctrl_node = Node(
         package='f1tenth',
-        executable='following',
+        executable='pure_pursuit',
         name='control',
         output="screen",
     )
@@ -150,7 +150,7 @@ def generate_launch_description():
         executable='map_server',
         name='mapserver',  # Name must match the lifecycle bringup argument.
         output='screen',
-        parameters=[{'yaml_filename': '/home/nvidia/my_map.yaml'}]
+        parameters=[{'yaml_filename': '/home/nvidia/team2TEMP/src/f1tenth/VipPathOptimization/maps/hallway.yaml'}]
     )
 
     # Launch the AMCL node with the given parameter.
@@ -160,13 +160,11 @@ def generate_launch_description():
         name='amcl',
         output='screen',
         parameters=[{'base_frame_id': 'base_link',
-                     'set_initial_pose': True,
-                     'initial_pose': {'x': 2.47508, 'y': 6.04826, 'z': 0.0,},
+                     'set_initial_pose': True, 
+                     'initial_pose': {'x': 1.812, 'y': 0.043, 'z': 0.0,},
                      'odom_frame_id': 'odom'}]
     )
 
-    ld.add_action(map_server_node)
-    ld.add_action(amcl_node)
 
     # Bring up both nodes' lifecycle interfaces using a single lifecycle_bringup command.
     lifecycle_bringup = ExecuteProcess(
@@ -175,6 +173,13 @@ def generate_launch_description():
     )
 
     # finalize
+    # ld.add_action(TimerAction(
+    #    period=1.0,
+    #    actions=[ctrl_node]
+    # ))
+
+    ld.add_action(map_server_node)
+    ld.add_action(amcl_node)
     ld.add_action(joy_node)
     ld.add_action(joy_teleop_node)
     ld.add_action(ackermann_to_vesc_node)
@@ -192,8 +197,4 @@ def generate_launch_description():
     # ld.add_action(slam_include)
     # ld.add_action(dynamic_tf_publisher_node) 
     # ld.add_action(teleop2drive)
-    # ld.add_action(TimerAction(
-    #    period=1.0,
-    #    actions=[ctrl_node]
-    # ))
     return ld

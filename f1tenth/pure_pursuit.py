@@ -14,12 +14,12 @@ from geometry_msgs.msg import TransformStamped, Quaternion
 from rclpy.duration import Duration
 
 class PathPoint():
-    def __init__(self, x, y, heading, curvature, distance):
+    def __init__(self, x, y, heading, distance):
         # global pose
         self.x = x
         self.y = y
         self.heading = heading
-        self.curvature = curvature
+        # self.curvature = curvature
         self.distance = distance
 
 class PurePursuitController(Node):
@@ -32,13 +32,12 @@ class PurePursuitController(Node):
         # so the planner should give up a csv/json of the appropriate format to place into this
         self.waypoints = self.load_waypoints('/home/nvidia/team2TEMP/src/f1tenth/VipPathOptimization/maps/points/points.csv') 
         self.current_waypoint_index = 0
-        self.path = PathPoint()
         # Pure pursuit parameters - defined directly in the code
-        self.lookahead_distance = 1.0  # meters
+        self.lookahead_distance = 0.3  # meters
         self.max_speed = 0.5  # m/s
         self.max_steering_angle = 0.5  # radians (approximately 28.6 degrees)
-        self.wheel_base = 0.5  # meters (distance between front and rear axles)
-        self.waypoint_threshold = 0.5  # meters
+        self.wheel_base = 0.33  # meters (distance between front and rear axles)
+        self.waypoint_threshold = 0.05  # meters
         
         # Initialize TF buffer
         self.tf_buffer = tf2_ros.Buffer()
@@ -59,6 +58,7 @@ class PurePursuitController(Node):
         self.current_pose = None
         
         self.get_logger().info("Pure Pursuit Controller initialized")
+
         self.get_logger().info(f"Loaded {len(self.waypoints)} waypoints")
         
     # def load_waypoints(self, filename):
@@ -72,6 +72,38 @@ class PurePursuitController(Node):
     #         self.get_logger().error(f"Failed to load waypoints: {e}")
     #         return []
     
+    import math
+
+    def find_closest_point_to_lookahead(self, x0, y0, yaw, lookahead_distance):
+        # Direction vector from yaw
+        dx, dy = math.cos(yaw), math.sin(yaw)
+        
+        # Look-ahead point
+        xL = x0 + lookahead_distance * dx
+        yL = y0 + lookahead_distance * dy
+        
+        min_distance = float('inf')
+        closest_point = None
+        
+        for point in self.waypoints:
+            # Vector from current position to point
+            vx, vy = point.x - x0, point.y - y0
+            
+            # Dot product to check if point is in front
+            dot = vx * dx + vy * dy
+            
+            if dot > 0:  # Point is in front
+                # Distance from point to look-ahead point
+                distance = math.sqrt((point.x - xL)**2 + (point.y - yL)**2)
+                if distance < min_distance:
+                    min_distance = distance
+                    closest_point = point
+        
+        if(closest_point):
+            return closest_point
+        
+        return None
+
     def compute_curvature(self, x, y, ds=None):
         """
         Compute curvature kappa[i] = (x' y'' - y' x'') / (x'^2 + y'^2)^(3/2)
@@ -140,41 +172,31 @@ class PurePursuitController(Node):
         waypoints = []
         
         try:
-            with open('your_file.csv', newline='') as csvfile:
+            with open(filename, newline='') as csvfile:
                 row = list(csv.reader(csvfile))
                 arrX = []
                 arrY = []
-                for i in range(len(row) - 1):
-                    arrX.append([row[i][0]])
-                    arrY.append([row[i][1]])
+                
+                for i in range(1, len(row) - 1):
+                    arrX.append(float(row[i][0]))
+                    arrY.append(float(row[i][1]))
                     
-                    x1 = row[i][0]
-                    x2 = row[i + 1][0]
-                    y1 = row[i][1]
-                    y2 = row[i + 1][1]
+                    x1 = float(row[i][0])
+                    x2 = float(row[i + 1][0])
+                    y1 = float(row[i][1])
+                    y2 = float(row[i + 1][1])
                     
                     heading = math.atan2(y2-y1, x2-x1)
-                    curvature = self.compute_curvature(arrX, arrY)
+                    # curvature = 0
+                    # if (len(arrX) >= 3):
+                    #     curvature = self.compute_curvature(arrX, arrY)
                     distance = np.hypot(y2-y1, x2-x1)
                     
-                    waypoints.append(PathPoint(x1,y1,heading, curvature, distance))
+                    waypoints.append(PathPoint(x1,y1,heading, distance))
         except Exception as e:
             self.get_logger().error(f"Failed to load waypoints: {e}")
         
         return waypoints
-        
-        # try:
-        #     with open(filename, 'r') as csvfile:
-        #         reader = csv.DictReader(csvfile)
-        #         for row in reader:
-        #             # cast to float and append as a tuple
-        #             # instead append a PathPoint object
-        #             # calculate heading
-        #             waypoints.append((float(row['A']), float(row['B'])))
-        #     self.get_logger().info(f"Loaded {len(waypoints)} waypoints from {filename}")
-        # except Exception as e:
-        #     self.get_logger().error(f"Failed to load waypoints: {e}")
-        # return waypoints
 
     def pose_callback(self, msg):
         """Callback for AMCL pose updates."""
@@ -184,91 +206,78 @@ class PurePursuitController(Node):
         if self.current_pose and self.waypoints:
             self.calculate_control()
     
+    def write_current_pos(self, current_pos_x, current_pos_y, filename='current_positions.csv'):
+        data = [current_pos_x, current_pos_y]
+        
+        with open(filename, 'a', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            if csvfile.tell() == 0:
+                writer.writerow(['Current_X', 'Current_Y'])
+            writer.writerow(data)
+
+    def write_old_pos(self, oldx, oldy, filename='old_positions.csv'):
+        data = [oldx, oldy]
+        
+        with open(filename, 'a', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            if csvfile.tell() == 0:
+                writer.writerow(['Old_X', 'Old_Y'])
+            writer.writerow(data)
+
     def calculate_control(self):
         """Calculate control commands using pure pursuit."""
         # Get current position and orientation
         current_pos = self.current_pose.pose.pose.position
         current_orient = self.current_pose.pose.pose.orientation
         
-        ## determine the path point closest to the vehicle
-        for point in self.waypoints:
-            
-        
         # Convert quaternion to euler angles (yaw)
-        # For a quaternion q = [x, y, z, w], yaw = atan2(2*(w*z + x*y), 1 - 2*(y*y + z*z))
         x, y, z, w = current_orient.x, current_orient.y, current_orient.z, current_orient.w
         current_yaw = math.atan2(2.0 * (w*z + x*y), 1.0 - 2.0 * (y*y + z*z))
         
-        # Check if we've reached the current waypoint
-        current_waypoint = self.waypoints[self.current_waypoint_index]
-        waypoint_pos = current_waypoint['pose']['pose']['position']
-        
-        distance_to_waypoint = math.sqrt(
-            (current_pos.x - waypoint_pos['x'])**2 + 
-            (current_pos.y - waypoint_pos['y'])**2
-        )
-        
-        # If we're close enough to the current waypoint, move to the next one
-        if distance_to_waypoint < self.waypoint_threshold:
-            self.current_waypoint_index = (self.current_waypoint_index + 1) % len(self.waypoints)
-            self.get_logger().info(f"Reached waypoint {self.current_waypoint_index-1}, moving to next waypoint")
-            
-            # If we've completed the path, stop
-            if self.current_waypoint_index == 0:
-                self.get_logger().info("Path completed!")
-                self.stop_robot()
-                return
-        
-        # Find the lookahead point
-        lookahead_point = self.find_lookahead_point(
-            current_pos.x, current_pos.y, current_yaw
-        )
-        
-        if lookahead_point is None:
-            self.get_logger().warn("No lookahead point found, stopping robot")
-            self.stop_robot()
+        point = self.find_closest_point_to_lookahead(current_pos.x, current_pos.y, current_yaw, self.lookahead_distance)
+
+        if point is None:
             return
         
-        # Calculate control commands
+        # Store original coordinates for logging
+        oldx = point.x
+        oldy = point.y
+        
+        # Transform point to vehicle's local coordinate frame
+        dx = point.x - current_pos.x
+        dy = point.y - current_pos.y
+        
+        # Rotate to vehicle's local frame
+        point.x = dx * math.cos(-current_yaw) - dy * math.sin(-current_yaw)
+        point.y = dx * math.sin(-current_yaw) + dy * math.cos(-current_yaw)
+        
+        distance_to_waypoint = np.hypot(oldy - current_pos.y, oldx - current_pos.x)
+        
+        # Calculate the angle between vehicle heading and lookahead point
+        alpha = math.atan2(point.y, point.x)
+        
+        # Calculate curvature - pure pursuit formula
+        kappa = 2 * math.sin(alpha) / self.lookahead_distance
+        
+        # Calculate steering angle using vehicle wheelbase
+        steering_angle = math.atan(self.wheel_base * kappa)
+        
+        # Clamp steering angle to max
+        steering_angle = max(-self.max_steering_angle, min(self.max_steering_angle, steering_angle))
+        
+        self.get_logger().info(f"I am at {current_pos.x}, {current_pos.y} Going to x:{oldx}y: {oldy} Distance to waypoint: {distance_to_waypoint:.2f}m, Steering angle: {steering_angle:.2f}rad")
+        self.write_current_pos(current_pos.x, current_pos.y)
+        self.write_old_pos(oldx, oldy)
+
+        # Create and publish command
         cmd = AckermannDriveStamped()
-        
-        # Calculate steering angle
-        # Pure pursuit formula for Ackermann steering: δ = arctan(2L*sin(α)/d)
-        # where L is the wheelbase, α is the angle to the lookahead point, and d is the lookahead distance
-        dx = lookahead_point[0] - current_pos.x
-        dy = lookahead_point[1] - current_pos.y
-        
-        # Angle to lookahead point
-        alpha = math.atan2(dy, dx) - current_yaw
-        
-        # Normalize angle to [-pi, pi]
-        alpha = math.atan2(math.sin(alpha), math.cos(alpha))
-        
-        # Calculate steering angle using Ackermann geometry
-        # For small angles, tan(δ) ≈ L/R where R is the turning radius
-        # R = d/(2*sin(α)) from pure pursuit geometry
-        # Therefore, δ = arctan(2L*sin(α)/d)
-        steering_angle = math.atan2(2.0 * self.wheel_base * math.sin(alpha), self.lookahead_distance)
-        
-        # Limit steering angle
-        steering_angle = max(min(steering_angle, self.max_steering_angle), -self.max_steering_angle)
-        
-        # Set speed (constant for now)
         cmd.drive.speed = self.max_speed
-        
-        # Set steering angle
         cmd.drive.steering_angle = steering_angle
-        
-        # Set acceleration and jerk to 0 (constant speed)
         cmd.drive.acceleration = 0.0
         cmd.drive.jerk = 0.0
         
-        # Publish command
         self.cmd_pub.publish(cmd)
         
-        # Log control values
-        self.get_logger().debug(f"Distance to waypoint: {distance_to_waypoint:.2f}m, Steering angle: {steering_angle:.2f}rad")
-    
     def find_lookahead_point(self, x, y, yaw):
         """Find the lookahead point on the path."""
         # Get the current waypoint and next waypoint
