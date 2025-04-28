@@ -33,8 +33,8 @@ class PurePursuitController(Node):
         self.waypoints = self.load_waypoints('/home/nvidia/team2TEMP/src/f1tenth/VipPathOptimization/maps/points/points.csv') 
         self.current_waypoint_index = 0
         # Pure pursuit parameters - defined directly in the code
-        self.lookahead_distance = 0.3  # meters
-        self.max_speed = 0.5  # m/s
+        self.lookahead_distance = 1.0 # meters
+        self.max_speed = 0.65  # m/s
         self.max_steering_angle = 0.5  # radians (approximately 28.6 degrees)
         self.wheel_base = 0.33  # meters (distance between front and rear axles)
         self.waypoint_threshold = 0.05  # meters
@@ -84,8 +84,14 @@ class PurePursuitController(Node):
         
         min_distance = float('inf')
         closest_point = None
+        closest_index = -1
         
-        for point in self.waypoints:
+        # Search through all waypoints
+        for i in range(len(self.waypoints)):
+            # Use modulo to wrap around to the beginning
+            idx = (self.current_waypoint_index + i) % len(self.waypoints)
+            point = self.waypoints[idx]
+            
             # Vector from current position to point
             vx, vy = point.x - x0, point.y - y0
             
@@ -95,11 +101,14 @@ class PurePursuitController(Node):
             if dot > 0:  # Point is in front
                 # Distance from point to look-ahead point
                 distance = math.sqrt((point.x - xL)**2 + (point.y - yL)**2)
+                
                 if distance < min_distance:
                     min_distance = distance
                     closest_point = point
+                    closest_index = idx
         
-        if(closest_point):
+        if closest_point:
+            self.current_waypoint_index = closest_index
             return closest_point
         
         return None
@@ -201,7 +210,7 @@ class PurePursuitController(Node):
     def pose_callback(self, msg):
         """Callback for AMCL pose updates."""
         self.current_pose = msg
-        
+        self.get_logger().info(f"Got current pose")
         # If we have a valid pose and waypoints, calculate control
         if self.current_pose and self.waypoints:
             self.calculate_control()
@@ -235,7 +244,7 @@ class PurePursuitController(Node):
         current_yaw = math.atan2(2.0 * (w*z + x*y), 1.0 - 2.0 * (y*y + z*z))
         
         point = self.find_closest_point_to_lookahead(current_pos.x, current_pos.y, current_yaw, self.lookahead_distance)
-
+    
         if point is None:
             return
         
@@ -265,7 +274,7 @@ class PurePursuitController(Node):
         # Clamp steering angle to max
         steering_angle = max(-self.max_steering_angle, min(self.max_steering_angle, steering_angle))
         
-        self.get_logger().info(f"I am at {current_pos.x}, {current_pos.y} Going to x:{oldx}y: {oldy} Distance to waypoint: {distance_to_waypoint:.2f}m, Steering angle: {steering_angle:.2f}rad")
+        self.get_logger().info(f"Current waypoint index: {self.current_waypoint_index}/{len(self.waypoints)-1}, Position: ({current_pos.x:.2f}, {current_pos.y:.2f}), Target: ({oldx:.2f}, {oldy:.2f}), Distance: {distance_to_waypoint:.2f}m, Steering: {steering_angle:.2f}rad")
         self.write_current_pos(current_pos.x, current_pos.y)
         self.write_old_pos(oldx, oldy)
 
@@ -273,8 +282,8 @@ class PurePursuitController(Node):
         cmd = AckermannDriveStamped()
         cmd.drive.speed = self.max_speed
         cmd.drive.steering_angle = steering_angle
-        cmd.drive.acceleration = 0.0
-        cmd.drive.jerk = 0.0
+        # cmd.drive.acceleration = 0.0
+        # cmd.drive.jerk = 0.0
         
         self.cmd_pub.publish(cmd)
         

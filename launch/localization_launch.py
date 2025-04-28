@@ -150,7 +150,7 @@ def generate_launch_description():
         executable='map_server',
         name='mapserver',  # Name must match the lifecycle bringup argument.
         output='screen',
-        parameters=[{'yaml_filename': '/home/nvidia/team2TEMP/src/f1tenth/VipPathOptimization/maps/hallway.yaml'}]
+        parameters=[{'yaml_filename': '/home/nvidia/team2TEMP/src/f1tenth/VipPathOptimization/maps/ifl28-3.yaml'}]
     )
 
     # Launch the AMCL node with the given parameter.
@@ -161,7 +161,7 @@ def generate_launch_description():
         output='screen',
         parameters=[{'base_frame_id': 'base_link',
                      'set_initial_pose': True, 
-                     'initial_pose': {'x': 1.812, 'y': 0.043, 'z': 0.0,},
+                     'initial_pose': {'x': 0.0, 'y': 0.0, 'z': 0.0,},
                      'odom_frame_id': 'odom'}]
     )
 
